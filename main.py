@@ -1,39 +1,56 @@
 from tradingview_ta import *
-import urllib.parse
-import pandas
-#from yahoo_fin import stock_info
 from termcolor import colored
 import time
 import telegram_send
-import os.path
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import yfinance as yf
+from API import XTB
+import datetime
+import multiprocessing
+import functools
+import configparser
 
-# revolut googleSheetId = '1bCOpwbWV49_XIrmJMjDHqiLNldqgttNxzvvgpNT79oI'
-googleSheetId = '1sGiHOiauEBmPthBjZ08hG1FEUEshsS30LOMVvK-iiog'
-#revolut worksheetName = 'Revolut stocks list'
-worksheetName = 'Table 1'
-sheet_range = 'A4:A1733'
+# Getting credentials from config.ini file
+config = configparser.ConfigParser()
+config.read('config.ini')
+user = config.get('XTB', 'XTB_user')
+password = config.get('XTB', 'XTB_pass')
 
-sheetURL = 'https://docs.google.com/spreadsheets/d/{0}/gviz/tq?tqx=out:csv&sheet={1}&range={2}'.format(
-	googleSheetId,
-	urllib.parse.quote_plus(worksheetName),
-	sheet_range
-)
+API = XTB(user, password)
 
-ticker_list = pandas.read_csv(sheetURL, header=None)
-#df = pandas.read_csv(sheetURL, usecols=['Symbol', 'Market'])
-tickers = ticker_list.to_string(header=False, index=False).split()
-trading_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+ticker_list = API.get_AllSymbols()
+
+ticker_list = [tickerdicts["symbol"].split(".")[0] for tickerdicts in ticker_list["returnData"] if "symbol" in tickerdicts and ".US" in tickerdicts["symbol"] and "CLOSE ONLY" not in tickerdicts["description"] and "(Cboe BZX Real-Time Quote)" in tickerdicts["description"]]
+ticker_list = sorted(ticker_list)
+API.logout()
+print("XTB login and logout")
+
+excluded_dates_list = [
+	datetime.date(2024, 1, 1),
+	datetime.date(2024, 1,15),
+	datetime.date(2024, 2,19),
+	datetime.date(2024, 3,29),
+	datetime.date(2024, 5,27),
+	datetime.date(2024, 6,19),
+	datetime.date(2024, 7, 4),
+	datetime.date(2024, 9, 2),
+	datetime.date(2024,11,28),
+	datetime.date(2024,12,25)
+]
+
 first_time_run = 0
-current_sell_list = []
-current_buy_list = []
 previous_sell_list = []
 previous_buy_list = []
 diff_sell_list = []
 diff_buy_list = []
-one_day_tickers="AAN AAP ABMD ABX ACN ADC AEE AFG AIZ AMG APT ARW ASH ASM ATNX ATO AUUD AX AYI BNFT CABO CLVSQ COO DAVA DLX DS EPC GSKY LRFC ONEM RCII SHLD SJI SPAQ SRNE STOR SWIR TCDA TTM TWTR WEBR"
+existing_tickers = []
+sheet = None
+
+# Define Manager objects to create shared lists
+manager = multiprocessing.Manager()
+current_sell_list = manager.list()
+current_buy_list = manager.list()
 
 #vars for portfolio spreadsheet connect and works
 scopes = [
@@ -50,182 +67,297 @@ def trim_me(value_to_trim):
 	strip_value = value_to_trim[:value_index]
 	return float(strip_value)
 
-while True:
-	day_of_trade = time.strftime("%A")
-	time_of_trade = time.strftime("%H%M%S")
-	time_of_trade = int(time_of_trade)
-	message_for_telegram = time.strftime("%d.%m.%Y %H:%M:%S\n")
+def get_stock_data(ticker):
+	global first_time_run
+	dividend_data = None
+	try:
+		stock_data = yf.Ticker(ticker)
+		if first_time_run == 1:
+			dividend_data = stock_data.actions.Dividends
+		history_data = stock_data.history(period="1m")
+		if not history_data.empty and dividend_data is not None and not dividend_data.empty:
+			return trim_me(float(history_data.Close.iloc[0])), float(dividend_data.iloc[-1])
+		elif not history_data.empty and (dividend_data is None or dividend_data.empty):
+			return trim_me(float(history_data.Close.iloc[0])), None
+		else:
+			print(f"No data available for {ticker}")
+			return None, None
+	except Exception as e:
+		print(colored(f"Failed to get data for {ticker}: {e}", "red"))
+		return None, None
 
-	if time_of_trade >= 163001 and time_of_trade <= 164001:
-		first_time_run = 1
+def authorize_spreadsheet():
+	try:
+		portfoliosheet = gspread.auth.authorize(credentials)
+		sheet = portfoliosheet.open('portfolio').worksheet('portfolio')
+		#print(f"inside authorize_spreadsheet, sheet: {sheet}")
+		# Get the list of tickers already present in the spreadsheet
+		existing_tickers = sheet.col_values(2)[2:]  # Skip header row
+		#print(f"inside authorize_spreadsheet, existing_tickers: {existing_tickers}")
+		return sheet, existing_tickers
+	except Exception as e:
+		print(colored(f"Failed to establish connection to Google Sheets: {e}", "red"))
+		return None, None
 
-	if day_of_trade in trading_days and time_of_trade >= 163001 and time_of_trade <= 230000:
-
+def update_spreadsheet(sheet, ticker, current_price, dividend_price):
+	global first_time_run
+	sheet, existing_tickers = authorize_spreadsheet()
+	if sheet is not None:
 		try:
-			portfoliosheet = gspread.authorize(credentials)
-			sheet = portfoliosheet.open('portfolio').worksheet('portfolio')
-		except gspread.exceptions.APIError as e:
-			print("could not establish connection this time")
-			sheet_fail = 1
+			colvals = sheet.col_values(2)
+			if ticker in colvals:
+				count = colvals.index(ticker) + 1
+				price_cell = f"F{count}"
+				sheet.update_acell(price_cell, current_price)
+				print(f"Price {current_price} updated for {ticker} in spreadsheet")
+				if first_time_run == 1 or dividend_price is not None:
+					div_cell = f"G{count}"
+					sheet.update_acell(div_cell, dividend_price)
+					print(f"Dividend {dividend_price} updated for {ticker} in spreadsheet")
+		except Exception as e:
+			print(colored(f"Failed to update price in spreadsheet for {ticker}: {e}", "red"))
 
-		my_portfolio_file = open("portofoliu.txt", "r")
-		content_portofoliu = my_portfolio_file.read()
-		portofoliu = content_portofoliu.split(" ")
-		my_portfolio_file.close()
+def generate_telegram_message(ticker, signal_type, portfolio_type):
+	if portfolio_type == "portfolio":
+		signal_type_color = "green" if signal_type == "buy" else "yellow"
+	elif portfolio_type == "wishlist":
+		signal_type_color = "blue"
+	else:
+		signal_type_color = "white"
+	return colored(f"{signal_type.upper()} signal for {ticker} ({portfolio_type})", signal_type_color)
 
-		my_wishlist_file = open("wishlist.txt", "r")
-		content_wishlist = my_wishlist_file.read()
-		wishlist = content_wishlist.split(" ")
-		my_wishlist_file.close()
+def return_portfolio_tickers():
+	my_portfolio_file = open("portofoliu.txt", "r")
+	content_portofoliu = my_portfolio_file.read()
+	portofoliu = content_portofoliu.split(" ")
+	my_portfolio_file.close()
+	return portofoliu
 
-		for ticker in tickers:
-			count = 0
-			sheet_fail = 0
-			current_price = 0
+def return_wishlist_tickers():
+	my_wishlist_file = open("wishlist.txt", "r")
+	content_wishlist = my_wishlist_file.read()
+	wishlist = content_wishlist.split(" ")
+	my_wishlist_file.close()
+	return wishlist
 
-			ticker = ticker.split(".")
-			if "US" in ticker[1]:
-				ticker = ticker[0]
+def process_ticker(ticker, existing_tickers, portofoliu, wishlist, sheet, current_sell_list, current_buy_list):
+	current_price, dividend_price = get_stock_data(ticker)
+
+	if current_price is not None:
+		try:
+			try:
+				stock_data = TA_Handler(
+					symbol=ticker,
+					exchange="NYSE",
+					screener="america",
+					interval=Interval.INTERVAL_1_DAY
+				)
+				tickerRSI = trim_me(float(stock_data.get_analysis().indicators["RSI"]))
+				tickerBBU = trim_me(float(stock_data.get_analysis().indicators["BB.upper"]))
+				tickerBBL = trim_me(float(stock_data.get_analysis().indicators["BB.lower"]))
+			except Exception:
 				try:
 					stock_data = TA_Handler(
 						symbol=ticker,
-						exchange="NYSE",
+						exchange="NASDAQ",
 						screener="america",
 						interval=Interval.INTERVAL_1_DAY
 					)
-					tickerRSI = stock_data.get_analysis().indicators["RSI"]
-					tickerBBU = stock_data.get_analysis().indicators["BB.upper"]
-					tickerBBL = stock_data.get_analysis().indicators["BB.lower"]
-				except Exception:
-					try:
-						stock_data = TA_Handler(
-							symbol=ticker,
-							exchange="NASDAQ",
-							screener="america",
-							interval=Interval.INTERVAL_1_DAY
-						)
-						tickerRSI = stock_data.get_analysis().indicators["RSI"]
-						tickerBBU = stock_data.get_analysis().indicators["BB.upper"]
-						tickerBBL = stock_data.get_analysis().indicators["BB.lower"]
-					except Exception:
-						print(colored("Couldn't get stock data for {}", "yellow").format(ticker))
+					tickerRSI = trim_me(float(stock_data.get_analysis().indicators["RSI"]))
+					tickerBBU = trim_me(float(stock_data.get_analysis().indicators["BB.upper"]))
+					tickerBBL = trim_me(float(stock_data.get_analysis().indicators["BB.lower"]))
+				except Exception as e:
+					print(colored("Couldn't get stock data for {0}: {1}", "yellow").format(ticker, e))
+					tickerRSI = None
+					tickerBBL = None
+					tickerBBU = None
 
-				try:
-					ticker_data = yf.Ticker(ticker)
+			#print(f"ticker: {ticker} current price: {current_price} RSI: {tickerRSI} BBL: {tickerBBL} BBU: {tickerBBU}")
 
-					if ticker in one_day_tickers:
-						current_price = trim_me(float(ticker_data.history(period="1d").Close.iloc[0]))
-					else:
-						current_price = trim_me(float(ticker_data.history(period="1m").Close.iloc[0]))
-					#trailingPE = trim_me(ticker_data.info['trailingPE'])
-					print("{0} at price {1}".format(ticker, current_price))
-				except:
-					print(colored("Couldn't get price data for {}", "yellow").format(ticker))
-					sheet_fail = 1
-
-				try:
-					if tickerRSI >= 70 and current_price >= tickerBBU:
-						if ticker in portofoliu:
-							print(colored("Signal to sell {0} for {1}", "red", attrs=["bold", "underline"]).format(ticker, current_price))
-							message_time = time.strftime("%d.%m.%Y %H:%M:%S\n")
-							alert_message = "<b>!!! " + message_time + "You have this " + ticker + "\nMaybe SELL at: " + str(trim_me(current_price)) + "</b>"
-							telegram_send.send(messages=[alert_message], parse_mode="html")
-						else:
-							print(colored("Signal to sell {0} for {1}", "red").format(ticker, current_price))
+			if tickerRSI is not None and tickerBBL is not None and tickerBBU is not None:
+				if tickerRSI >= 70 and current_price >= tickerBBU:
+					if ticker in portofoliu:
+						message = generate_telegram_message(ticker, "sell", "portfolio")
+						message = message[5:][:-4]
+						telegram_send.send(messages=[message], parse_mode="html")
 						current_sell_list.append(ticker)
-					if tickerRSI <= 30 and current_price <= tickerBBL:
-						if ticker in portofoliu:
-							print(colored("Signal to buy {0} for {1}", "green", attrs=["bold", "underline"]).format(ticker, current_price))
-							message_time = time.strftime("%d.%m.%Y %H:%M:%S\n")
-							alert_message = "<b>!!! " + message_time + "You have this " + ticker + "\nBUY More at: " + str(trim_me(current_price)) + "</b>"
-							telegram_send.send(messages=[alert_message], parse_mode="html")
-						elif ticker in wishlist:
-							print(colored("Signal to buy {0} for {1}", "blue", attrs=["bold", "underline"]).format(ticker, current_price))
-							message_time = time.strftime("%d.%m.%Y %H:%M:%S\n")
-							alert_message = "<b>!!! " + message_time + "You want this " + ticker + "\nBUY Now at: " + str(trim_me(current_price)) + "</b>"
-							telegram_send.send(messages=[alert_message], parse_mode="html")
-						else:
-							print(colored("Signal to buy {0} for {1}", "green").format(ticker, current_price))
+						#print(f"current sell list: {current_sell_list}")
+					else:
+						current_sell_list.append(ticker)
+						#print(f"current sell list: {current_sell_list}")
+				if tickerRSI <= 30 and current_price <= tickerBBL:
+					if ticker in portofoliu:
+						message = generate_telegram_message(ticker, "buy", "portfolio")
+						message = message[5:][:-4]
+						telegram_send.send(messages=[message], parse_mode="html")
 						current_buy_list.append(ticker)
-				except:
-					print(colored("Couldn't calculate data for {}", "cyan").format(ticker))
+						#print(f"current buy list: {current_buy_list}")
+					elif ticker in wishlist:
+						message = generate_telegram_message(ticker, "buy", "wishlist")
+						message = message[5:][:-4]
+						telegram_send.send(messages=[message], parse_mode="html")
+						current_buy_list.append(ticker)
+						#print(f"current buy list: {current_buy_list}")
+					else:
+						current_buy_list.append(ticker)
+						#print(f"current buy list: {current_buy_list}")
 
-			if sheet_fail == 0:
-				#Getting through gsheets list and update value with current price
-				try:
-					colvals = sheet.col_values(2)
-					if ticker in colvals:
-						for val in colvals:
-							count+=1
-							if val == ticker:
-								price_cell="F"+str(count)
-								print("{0} found at cell {1}".format(val, price_cell))
-								current_price=trim_me(current_price)
-								print("{0} has price {1}".format(val, current_price))
-								sheet.update_acell(price_cell, current_price)
-								print("price updated in sheet")
-								sector_cell="C"+str(count)
-								try:
-									sector_data=ticker_data.info['industry']
-									sheet.update_acell(sector_cell, sector_data)
-								except:
-									print ("could not update industry sector in gsheet for this ticker")
-				except:
-					print("could not update data in gsheet. Maybe at next run")
+				#print(f"ticker: {ticker}")
+				#print(f"existing tickers: {existing_tickers}")
+				if ticker in existing_tickers:
+					update_spreadsheet(sheet, ticker, current_price, dividend_price)
+
+		except Exception as e:
+			print(colored("Error processing ticker {0}: {1}".format(ticker, e), "yellow"))
+
+def function_to_run():
+	global first_time_run, previous_sell_list, previous_buy_list
+
+	day_of_trade = time.strftime("%A")
+	time_of_trade = int(time.strftime("%H%M%S"))
+
+	start_time = time.time()
+
+	if 163000 <= time_of_trade <= 163500:
+		first_time_run = 1
+	else:
+		first_time_run = 0
+
+	current_date = datetime.datetime.now().date()
+
+	if time_of_trade < 163000:
+		print(f"Market is not opened yet, sleep until 16:30")
+		target_time = datetime.time(16, 30)
+		time_slept = sleep_until_target_time(target_time)
+		print(f"Slept for {time_slept} seconds until {target_time}")
+	elif time_of_trade > 230000:
+		print(f"Market just closed, sleep until midnight")
+		target_time = datetime.time(0, 0)
+		time_slept = sleep_until_target_time(target_time)
+		print(f"Slept for {time_slept} seconds until {target_time}")
+	elif 163000 <= time_of_trade <= 230000:
+		sheet, existing_tickers = authorize_spreadsheet()
+		#print(f"inside function_to_run, sheet: {sheet}")
+		#print(f"inside function_to_run, existing_tickers: {existing_tickers}")
+		portofoliu = return_portfolio_tickers()
+		wishlist = return_wishlist_tickers()
+
+		#Use functools.partial to create a partial function with existing_tickers argument
+		partial_process_ticker = functools.partial(
+			process_ticker,
+			existing_tickers=existing_tickers,
+			portofoliu=portofoliu,
+			wishlist=wishlist,
+			sheet=sheet,
+			current_sell_list=current_sell_list,
+			current_buy_list=current_buy_list
+		)
+
+		#Use multiprocessing to process each ticker concurrently
+		with multiprocessing.Pool() as pool:
+			pool.map(partial_process_ticker, ticker_list)
 
 		if first_time_run == 1:
-			if not current_sell_list:
-				message_for_telegram = message_for_telegram + "Nothing to sell now\n"
-			else:
-				for ticker_to_sell in current_sell_list:
-					message_for_telegram = message_for_telegram + "Sell signal for: " + ticker_to_sell + "\n"
-
-			if not current_buy_list:
-				message_for_telegram = message_for_telegram + "Nothing to buy now\n"
-			else:
-				for ticker_to_buy in current_buy_list:
-					message_for_telegram = message_for_telegram + "Buy signal for: " + ticker_to_buy + "\n"
-
-			telegram_send.send(messages=[message_for_telegram], parse_mode="html")
-			first_time_run = 0
-			previous_sell_list = current_sell_list.copy()
-			previous_buy_list = current_buy_list.copy()
-			current_sell_list.clear()
-			current_buy_list.clear()
+			# Send initial Telegram message
+			send_initial_telegram_message()
 		else:
-			diff_sell_list = [x for x in current_sell_list if x not in previous_sell_list]
-			diff_buy_list = [x for x in current_buy_list if x not in previous_buy_list]
+			# Check for updates and send Telegram messages
+			send_telegram_updates()
 
-			if diff_sell_list or diff_buy_list:
-				message_for_telegram = "<b><u>Update at " + message_for_telegram + "</u></b>\n"
+			# Update previous lists
+			previous_sell_list = list(current_sell_list)
+			previous_buy_list = list(current_buy_list)
+			current_sell_list[:] = []
+			current_buy_list[:] = []
+
+	end_time = time.time()
+	elapsed_time = end_time - start_time
+	print(elapsed_time)
+
+def sleep_until_target_time(target_time):
+	current_datetime = datetime.datetime.now()
+	current_time = current_datetime.time()
+	# Get today's date
+	today_date = current_datetime.date()
+	# Combine today's date with the target time
+	target_datetime = datetime.datetime.combine(today_date, target_time)
+	# Check if the target time is in the past
+	if target_datetime < current_datetime:
+		# If so, add one day to the date
+		target_datetime += datetime.timedelta(days=1)
+
+	# Calculate  the time until the target time
+	time_until_target = target_datetime - current_datetime
+	time_until_target_seconds = time_until_target.total_seconds()
+	# Sleep until the target time
+	time.sleep(time_until_target_seconds)
+	# Return the time slept
+	return time_until_target_seconds
+
+def send_initial_telegram_message():
+	global current_sell_list, current_buy_list
+	message_for_telegram = ""
+	if not current_sell_list:
+		message_for_telegram += "Nothing to sell now\n"
+	else:
+		message_for_telegram += "Sell signals:\n"
+		for ticker in current_sell_list:
+			message_for_telegram += f"Sell signal for {ticker}\n"
+
+	if not current_buy_list:
+		message_for_telegram += "Nothing to buy now\n"
+	else:
+		message_for_telegram += "Buy signals:\n"
+		for ticker in current_buy_list:
+			message_for_telegram += f"Buy signal for: {ticker}\n"
+	print(f"message for telegram to be sent: {message_for_telegram}")
+
+	telegram_send.send(messages=[message_for_telegram], parse_mode="html")
+
+def send_telegram_updates():
+	portofoliu = return_portfolio_tickers()
+	wishlist = return_wishlist_tickers()
+	global current_sell_list, current_buy_list, previous_sell_list, previous_buy_list
+	message_for_telegram = ""
+
+	# Calculate the differences between the processed tickers
+	diff_sell_list = sorted(list(set(current_sell_list) - set(previous_sell_list)))
+	diff_buy_list = sorted(list(set(current_buy_list) - set(previous_buy_list)))
+
+	if diff_sell_list:
+		message_for_telegram += "Sell signals:\n"
+		for ticker in diff_sell_list:
+			if ticker in portofoliu:
+				message_for_telegram += f"Sell signal for: {ticker} (portofoliu)\n"
+			elif ticker in wishlist:
+				message_for_telegram += f"Sell signal for: {ticker} (wishlist)\n"
 			else:
-				continue
+				message_for_telegram += f"Sell signal for: {ticker}\n"
 
-			if diff_sell_list:
-				for ticker_to_sell in diff_sell_list:
-					if ticker_to_sell in portofoliu:
-						message_for_telegram = message_for_telegram + "<b><u>Sell signal for: " + ticker_to_sell + "</u></b>\n"
-					elif ticker_to_sell in wishlist:
-						message_for_telegram = message_for_telegram + "<b><i>Sell signal for: " + ticker_to_sell + "</i></b>\n"
-					else:
-						message_for_telegram = message_for_telegram + "Sell signal for: " + ticker_to_sell + "\n"
+	if diff_buy_list:
+		message_for_telegram += "Buy signals:\n"
+		for ticker in diff_buy_list:
+			if ticker in portofoliu:
+				message_for_telegram += f"Buy signal for: {ticker} (portofoliu)\n"
+			elif ticker in wishlist:
+				message_for_telegram += f"Buy signal for: {ticker} (wishlist)\n"
+			else:
+				message_for_telegram += f"Buy signal for: {ticker}\n"
 
-			if diff_buy_list:
-				for ticker_to_buy in diff_buy_list:
-					if ticker_to_buy in portofoliu:
-						message_for_telegram = message_for_telegram + "<b><u>Buy signal for: " + ticker_to_buy + "</u></b>\n"
-					elif ticker_to_buy in wishlist:
-						message_for_telegram = message_for_telegram + "<b><i>Buy signal for: " + ticker_to_buy + "</i></b>\n"
-					else:
-						message_for_telegram = message_for_telegram + "Buy signal for: " + ticker_to_buy + "\n"
+	print(f"message for telegram to be sent: {message_for_telegram}")
+	if message_for_telegram:
+		telegram_send.send(messages=[message_for_telegram], parse_mode="html")
 
-			telegram_send.send(messages=[message_for_telegram], parse_mode="html")
-			previous_sell_list.clear()
-			previous_buy_list.clear()
-			previous_sell_list = current_sell_list.copy()
-			previous_buy_list = current_buy_list.copy()
-			current_sell_list.clear()
-			current_buy_list.clear()
+def run_function_except_on_dates(excluded_dates):
+	while True:
+		current_date = datetime.datetime.now().date()
+		# Check if the current date is in the excluded_dates list
+		if current_date not in excluded_dates and current_date.weekday() not in (5, 6):
+			function_to_run()
+		else:
+			print("Market closed because of bank holyday or weekend. Sleep until next day")
+			target_time = datetime.time(0, 0)
+			time_slept = sleep_until_target_time(target_time)
+			print(f"Slept for {time_slept} seconds until {target_time}")
 
-	if time_of_trade > 230000:
-		time.sleep(61200)
+run_function_except_on_dates(excluded_dates_list)
