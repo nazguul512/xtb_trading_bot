@@ -90,10 +90,8 @@ def authorize_spreadsheet():
 	try:
 		portfoliosheet = gspread.auth.authorize(credentials)
 		sheet = portfoliosheet.open('portfolio').worksheet('portfolio')
-		#print(f"inside authorize_spreadsheet, sheet: {sheet}")
 		# Get the list of tickers already present in the spreadsheet
 		existing_tickers = sheet.col_values(2)[2:]  # Skip header row
-		#print(f"inside authorize_spreadsheet, existing_tickers: {existing_tickers}")
 		return sheet, existing_tickers
 	except Exception as e:
 		print(colored(f"Failed to establish connection to Google Sheets: {e}", "red"))
@@ -127,11 +125,11 @@ def generate_telegram_message(ticker, signal_type, portfolio_type):
 	return colored(f"{signal_type.upper()} signal for {ticker} ({portfolio_type})", signal_type_color)
 
 def return_portfolio_tickers():
-	my_portfolio_file = open("portofoliu.txt", "r")
-	content_portofoliu = my_portfolio_file.read()
-	portofoliu = content_portofoliu.split(" ")
+	my_portfolio_file = open("portfolio.txt", "r")
+	content_portfolio = my_portfolio_file.read()
+	portfolio = content_portfolio.split(" ")
 	my_portfolio_file.close()
-	return portofoliu
+	return portfolio
 
 def return_wishlist_tickers():
 	my_wishlist_file = open("wishlist.txt", "r")
@@ -140,7 +138,7 @@ def return_wishlist_tickers():
 	my_wishlist_file.close()
 	return wishlist
 
-def process_ticker(ticker, existing_tickers, portofoliu, wishlist, sheet, current_sell_list, current_buy_list):
+def process_ticker(ticker, existing_tickers, portfolio, wishlist, sheet, current_sell_list, current_buy_list):
 	current_price, dividend_price = get_stock_data(ticker)
 
 	if current_price is not None:
@@ -172,38 +170,29 @@ def process_ticker(ticker, existing_tickers, portofoliu, wishlist, sheet, curren
 					tickerBBL = None
 					tickerBBU = None
 
-			#print(f"ticker: {ticker} current price: {current_price} RSI: {tickerRSI} BBL: {tickerBBL} BBU: {tickerBBU}")
-
 			if tickerRSI is not None and tickerBBL is not None and tickerBBU is not None:
 				if tickerRSI >= 70 and current_price >= tickerBBU:
-					if ticker in portofoliu:
+					if ticker in portfolio:
 						message = generate_telegram_message(ticker, "sell", "portfolio")
 						message = message[5:][:-4]
 						telegram_send.send(messages=[message], parse_mode="html")
 						current_sell_list.append(ticker)
-						#print(f"current sell list: {current_sell_list}")
 					else:
 						current_sell_list.append(ticker)
-						#print(f"current sell list: {current_sell_list}")
 				if tickerRSI <= 30 and current_price <= tickerBBL:
-					if ticker in portofoliu:
+					if ticker in portfolio:
 						message = generate_telegram_message(ticker, "buy", "portfolio")
 						message = message[5:][:-4]
 						telegram_send.send(messages=[message], parse_mode="html")
 						current_buy_list.append(ticker)
-						#print(f"current buy list: {current_buy_list}")
 					elif ticker in wishlist:
 						message = generate_telegram_message(ticker, "buy", "wishlist")
 						message = message[5:][:-4]
 						telegram_send.send(messages=[message], parse_mode="html")
 						current_buy_list.append(ticker)
-						#print(f"current buy list: {current_buy_list}")
 					else:
 						current_buy_list.append(ticker)
-						#print(f"current buy list: {current_buy_list}")
 
-				#print(f"ticker: {ticker}")
-				#print(f"existing tickers: {existing_tickers}")
 				if ticker in existing_tickers:
 					update_spreadsheet(sheet, ticker, current_price, dividend_price)
 
@@ -237,16 +226,14 @@ def function_to_run():
 		print(f"Slept for {time_slept} seconds until {target_time}")
 	elif 163000 <= time_of_trade <= 230000:
 		sheet, existing_tickers = authorize_spreadsheet()
-		#print(f"inside function_to_run, sheet: {sheet}")
-		#print(f"inside function_to_run, existing_tickers: {existing_tickers}")
-		portofoliu = return_portfolio_tickers()
+		portfolio = return_portfolio_tickers()
 		wishlist = return_wishlist_tickers()
 
 		#Use functools.partial to create a partial function with existing_tickers argument
 		partial_process_ticker = functools.partial(
 			process_ticker,
 			existing_tickers=existing_tickers,
-			portofoliu=portofoliu,
+			portfolio=portfolio,
 			wishlist=wishlist,
 			sheet=sheet,
 			current_sell_list=current_sell_list,
@@ -315,7 +302,7 @@ def send_initial_telegram_message():
 	telegram_send.send(messages=[message_for_telegram], parse_mode="html")
 
 def send_telegram_updates():
-	portofoliu = return_portfolio_tickers()
+	portfolio = return_portfolio_tickers()
 	wishlist = return_wishlist_tickers()
 	global current_sell_list, current_buy_list, previous_sell_list, previous_buy_list
 	message_for_telegram = ""
@@ -327,8 +314,8 @@ def send_telegram_updates():
 	if diff_sell_list:
 		message_for_telegram += "Sell signals:\n"
 		for ticker in diff_sell_list:
-			if ticker in portofoliu:
-				message_for_telegram += f"Sell signal for: {ticker} (portofoliu)\n"
+			if ticker in portfolio:
+				message_for_telegram += f"Sell signal for: {ticker} (portfolio)\n"
 			elif ticker in wishlist:
 				message_for_telegram += f"Sell signal for: {ticker} (wishlist)\n"
 			else:
@@ -337,8 +324,8 @@ def send_telegram_updates():
 	if diff_buy_list:
 		message_for_telegram += "Buy signals:\n"
 		for ticker in diff_buy_list:
-			if ticker in portofoliu:
-				message_for_telegram += f"Buy signal for: {ticker} (portofoliu)\n"
+			if ticker in portfolio:
+				message_for_telegram += f"Buy signal for: {ticker} (portfolio)\n"
 			elif ticker in wishlist:
 				message_for_telegram += f"Buy signal for: {ticker} (wishlist)\n"
 			else:
