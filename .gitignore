@@ -1,12 +1,2 @@
-config.ini
-bursa.json
-credentials.json
-div_strat.py
-finance_info_json
-main2.py
-main3.py
-main4.py
-main_on_classes.py
-pybotnasq_tok.json
-requirements.txt
 __pycache__/*
+pybotnasq_tok.json
