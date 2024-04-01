@@ -10,18 +10,18 @@ I'm not gonna lie, my journey in Python is in its infancy steps, so at the momen
 
 ## Setup
 
-After installing all the libraries needed (sorry, at this point I don't have enough experience with pip or such, but I will work on making a requirements.txt), you will need to setup a telegram bot channel in order for you to receive the notifications send by the bot.
+I'm running and testing this script in a Raspberry PI 4, on latest version of RaspberryOS.
+I have Python 3.10 installed on it.
+After installing all the libraries needed, you will need to setup a telegram bot channel in order for you to receive the notifications send by the bot.
  - In the API.py wrapper you will need to modify the file at line 553 for which kind of XTB account you are using, demo or real.
  - In config.ini file, enter your XTB username and password
- - For setting up a telegram bot, follow this link:
-   https://pypi.org/project/telegram-send/
+ - For setting up a telegram bot, follow this link: https://pypi.org/project/telegram-send/
  - In Instalation section you have a guide on hot to install the library and also how to setup the bot in telegram to provide the library all that is needed. Warning, I sugest using v 0.24
  - If you use a gspread like I do and want to keep it updated, you can use this guide here: https://codoid.com/automation-testing/gspread-python-tutorial/
    The key needs to be put in a file called pybotnasq_tok.json
 
 ## Next Steps
 
-- make a requirements.txt for easy install of dependencies
 - make script check dinamically if market is closed in that dinamically
 - make script start and end dinamically, based on system set tmz
 - make script asks at first run if you have available a spredsheed you want to update
