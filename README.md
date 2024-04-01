@@ -19,10 +19,12 @@ After installing all the libraries needed, you will need to setup a telegram bot
  - In Instalation section you have a guide on hot to install the library and also how to setup the bot in telegram to provide the library all that is needed. Warning, I sugest using v 0.24
  - If you use a gspread like I do and want to keep it updated, you can use this guide here: https://codoid.com/automation-testing/gspread-python-tutorial/
    The key needs to be put in a file called pybotnasq_tok.json
+ - Code has hardcoded time check at this moment so this means it will check the market automatically each day at 16:30 GMT+2. If you live in another TMZ, modify this accordingly.
+ - Code has a list of hardcoded dates in which market is closed. The list is available for the whole year of 2024 after which it will have to be renewed.
 
 ## Next Steps
 
-- make script check dinamically if market is closed in that dinamically
+- make script check dinamically if market is closed in that day
 - make script start and end dinamically, based on system set tmz
 - make script asks at first run if you have available a spredsheed you want to update
 - make script asks at first run if you have a telegram bot and want to use one for notifications
