@@ -14,7 +14,7 @@ I'm running and testing this script in a Raspberry PI 4, on latest version of Ra
 I have Python 3.10 installed on it.
 After installing all the libraries needed, you will need to setup a telegram bot channel in order for you to receive the notifications send by the bot.
  - In the API.py wrapper you will need to modify the file at line 553 for which kind of XTB account you are using, demo or real.
- - In config.ini file, enter your XTB username and password
+ - In config.ini file, enter your XTB username and password (username refers to your XTB account ID, not the username you use for login into account/app)
  - For setting up a telegram bot, follow this link: https://pypi.org/project/telegram-send/
  - In Instalation section you have a guide on hot to install the library and also how to setup the bot in telegram to provide the library all that is needed. Warning, I sugest using v 0.24
  - If you use a gspread like I do and want to keep it updated, you can use this guide here: https://codoid.com/automation-testing/gspread-python-tutorial/
