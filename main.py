@@ -17,15 +17,6 @@ config.read('config.ini')
 user = config.get('XTB', 'XTB_user')
 password = config.get('XTB', 'XTB_pass')
 
-API = XTB(user, password)
-
-ticker_list = API.get_AllSymbols()
-
-ticker_list = [tickerdicts["symbol"].split(".")[0] for tickerdicts in ticker_list["returnData"] if "symbol" in tickerdicts and ".US" in tickerdicts["symbol"] and "CLOSE ONLY" not in tickerdicts["description"] and "(Cboe BZX Real-Time Quote)" in tickerdicts["description"]]
-ticker_list = sorted(ticker_list)
-API.logout()
-print("XTB login and logout")
-
 excluded_dates_list = [
 	datetime.date(2024, 1, 1),
 	datetime.date(2024, 1,15),
@@ -46,6 +37,7 @@ diff_sell_list = []
 diff_buy_list = []
 existing_tickers = []
 sheet = None
+ticker_list = None
 
 # Define Manager objects to create shared lists
 manager = multiprocessing.Manager()
@@ -58,6 +50,15 @@ scopes = [
 'https://www.googleapis.com/auth/drive'
 ]
 credentials = ServiceAccountCredentials.from_json_keyfile_name("pybotnasq_tok.json", scopes)
+
+def get_tickers():
+	API = XTB(user, password)
+	ticker_list = API.get_AllSymbols()
+	ticker_list = [tickerdicts["symbol"].split(".")[0] for tickerdicts in ticker_list["returnData"] if "symbol" in tickerdicts and ".US" in tickerdicts["symbol"] and "CLOSE ONLY" not in tickerdicts["description"] and "(Cboe BZX Real-Time Quote)" in tickerdicts["description"]]
+	ticker_list = sorted(ticker_list)
+	API.logout()
+	print("XTB login and logout")
+	return ticker_list
 
 def trim_me(value_to_trim):
 	if not isinstance(value_to_trim, str):
@@ -200,14 +201,14 @@ def process_ticker(ticker, existing_tickers, portfolio, wishlist, sheet, current
 			print(colored("Error processing ticker {0}: {1}".format(ticker, e), "yellow"))
 
 def function_to_run():
-	global first_time_run, previous_sell_list, previous_buy_list
+	global first_time_run, previous_sell_list, previous_buy_list, ticker_list
 
 	day_of_trade = time.strftime("%A")
 	time_of_trade = int(time.strftime("%H%M%S"))
 
 	start_time = time.time()
 
-	if 163000 <= time_of_trade <= 163500:
+	if 163000 <= time_of_trade <= 163200:
 		first_time_run = 1
 	else:
 		first_time_run = 0
@@ -228,6 +229,10 @@ def function_to_run():
 		sheet, existing_tickers = authorize_spreadsheet()
 		portfolio = return_portfolio_tickers()
 		wishlist = return_wishlist_tickers()
+		if first_time_run == 1:
+			ticker_list = get_tickers()
+		elif ticker_list is None:
+			ticker_list = get_tickers()
 
 		#Use functools.partial to create a partial function with existing_tickers argument
 		partial_process_ticker = functools.partial(
