@@ -229,9 +229,7 @@ def function_to_run():
 		sheet, existing_tickers = authorize_spreadsheet()
 		portfolio = return_portfolio_tickers()
 		wishlist = return_wishlist_tickers()
-		if first_time_run == 1:
-			ticker_list = get_tickers()
-		elif ticker_list is None:
+		if first_time_run == 1 or ticker_list is None:
 			ticker_list = get_tickers()
 
 		#Use functools.partial to create a partial function with existing_tickers argument
