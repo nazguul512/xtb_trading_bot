@@ -6,3 +6,6 @@ termcolor>=1.1.0
 gspread>=5.7.1
 oauth2client>=4.1.3
 yfinance>=0.1.87
+websocket-client>=1.7.0
+openpyxl>=3.1.2
+python-telegram-bot==13.14
