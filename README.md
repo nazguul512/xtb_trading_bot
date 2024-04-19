@@ -10,15 +10,18 @@ I'm not gonna lie, my journey in Python is in its infancy steps, so at the momen
 
 ## Setup
 
-I'm running and testing this script in a Raspberry PI 4, on latest version of RaspberryOS.
-I have Python 3.10 installed on it.
+I'm running and testing this script in a Raspberry PI 4, on latest version of RaspberryOS arm64.  
+I have Python 3.11 installed on it.  
+If you are using it in the latest version of RaspberryOS (even maybe on arm64), the way they suggest you work with external python libraries has changes, as seen here: https://www.raspberrypi.com/documentation/computers/os.html#python-on-raspberry-pi  
+Therefore, follow their guide on how to create a venv, install the needed libraries in there, and run the app. If running in another OS or distro, this may not apply to you.  
+
 After installing all the libraries needed, you will need to setup a telegram bot channel in order for you to receive the notifications send by the bot.
  - In the API.py wrapper you will need to modify the file at line 553 for which kind of XTB account you are using, demo or real.
  - In config.ini file, enter your XTB username and password (username refers to your XTB account ID, not the username you use for login into account/app)
  - For setting up a telegram bot, follow this link: https://pypi.org/project/telegram-send/
- - In Instalation section you have a guide on hot to install the library and also how to setup the bot in telegram to provide the library all that is needed. Warning, I sugest using v 0.24
+ - In Instalation section you have a guide on how to install the library and also how to setup the bot in telegram to provide the library all that is needed. Warning, I sugest using v 0.24 of telegram-send and v 13.14 of python-telegram-bot which is a dependency of telegram-send. Updating these 2 libraries to their newest versions will cause problems and will not function properly.
  - If you use a gspread like I do and want to keep it updated, you can use this guide here: https://codoid.com/automation-testing/gspread-python-tutorial/
-   The key needs to be put in a file called pybotnasq_tok.json
+   The key needs to be put in a file called pybotnasq_tok.json for the time being. In time, I will make this optional. Not sure if the script will work without a gspread at this point.
  - Code has hardcoded time check at this moment so this means it will check the market automatically each day at 16:30 GMT+2. If you live in another TMZ, modify this accordingly.
  - Code has a list of hardcoded dates in which market is closed. The list is available for the whole year of 2024 after which it will have to be renewed.
 
