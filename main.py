@@ -126,17 +126,13 @@ def generate_telegram_message(ticker, signal_type, portfolio_type):
 	return colored(f"{signal_type.upper()} signal for {ticker} ({portfolio_type})", signal_type_color)
 
 def return_portfolio_tickers():
-	my_portfolio_file = open("portfolio.txt", "r")
-	content_portfolio = my_portfolio_file.read()
-	portfolio = content_portfolio.split(" ")
-	my_portfolio_file.close()
+	portfolio = config.get('finance', 'portfolio')
+	portfolio = portfolio.split(" ")
 	return portfolio
 
 def return_wishlist_tickers():
-	my_wishlist_file = open("wishlist.txt", "r")
-	content_wishlist = my_wishlist_file.read()
-	wishlist = content_wishlist.split(" ")
-	my_wishlist_file.close()
+	wishlist = config.get('finance', 'wishlist')
+	wishlist = wishlist.split(" ")
 	return wishlist
 
 def process_ticker(ticker, existing_tickers, portfolio, wishlist, sheet, current_sell_list, current_buy_list):
@@ -208,7 +204,7 @@ def function_to_run():
 
 	start_time = time.time()
 
-	if 163000 <= time_of_trade <= 163200:
+	if 163000 <= time_of_trade <= 163500:
 		first_time_run = 1
 	else:
 		first_time_run = 0
@@ -216,13 +212,13 @@ def function_to_run():
 	current_date = datetime.datetime.now().date()
 
 	if time_of_trade < 163000:
-		print(f"Market is not opened yet, sleep until 16:30")
-		target_time = datetime.time(16, 30)
+		print(f"Market is not open yet, sleep until 16:30")
+		target_time = datetime.time(16, 30, 1)
 		time_slept = sleep_until_target_time(target_time)
 		print(f"Slept for {time_slept} seconds until {target_time}")
 	elif time_of_trade > 230000:
 		print(f"Market just closed, sleep until midnight")
-		target_time = datetime.time(0, 0)
+		target_time = datetime.time(0, 0, 1)
 		time_slept = sleep_until_target_time(target_time)
 		print(f"Slept for {time_slept} seconds until {target_time}")
 	elif 163000 <= time_of_trade <= 230000:
@@ -345,8 +341,8 @@ def run_function_except_on_dates(excluded_dates):
 		if current_date not in excluded_dates and current_date.weekday() not in (5, 6):
 			function_to_run()
 		else:
-			print("Market closed because of bank holyday or weekend. Sleep until next day")
-			target_time = datetime.time(0, 0)
+			print("Market is closed because of bank holyday or weekend. Sleep until next day")
+			target_time = datetime.time(0, 0, 1)
 			time_slept = sleep_until_target_time(target_time)
 			print(f"Slept for {time_slept} seconds until {target_time}")
 
