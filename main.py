@@ -242,6 +242,9 @@ def function_to_run():
 		#Use multiprocessing to process each ticker concurrently
 		with multiprocessing.Pool() as pool:
 			pool.map(partial_process_ticker, ticker_list)
+		
+		current_buy_list = list(set(current_buy_list))
+		current_sell_list = list(set(current_sell_list))
 
 		if first_time_run == 1:
 			# Send initial Telegram message
@@ -251,8 +254,8 @@ def function_to_run():
 			send_telegram_updates()
 
 			# Update previous lists
-			previous_sell_list = list(current_sell_list)
-			previous_buy_list = list(current_buy_list)
+			previous_sell_list = list(set(current_sell_list))
+			previous_buy_list = list(set(current_buy_list))
 			current_sell_list[:] = []
 			current_buy_list[:] = []
 
