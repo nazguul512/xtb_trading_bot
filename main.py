@@ -197,7 +197,7 @@ def process_ticker(ticker, existing_tickers, portfolio, wishlist, sheet, current
 			print(colored("Error processing ticker {0}: {1}".format(ticker, e), "yellow"))
 
 def function_to_run():
-	global first_time_run, previous_sell_list, previous_buy_list, ticker_list
+	global first_time_run, previous_sell_list, previous_buy_list, ticker_list, current_sell_list, current_buy_list
 
 	day_of_trade = time.strftime("%A")
 	time_of_trade = int(time.strftime("%H%M%S"))
@@ -244,6 +244,8 @@ def function_to_run():
 			pool.map(partial_process_ticker, ticker_list)
 
 		if first_time_run == 1:
+			current_sell_list = list(set(current_sell_list))
+			current_buy_list = list(set(current_buy_list))
 			# Send initial Telegram message
 			send_initial_telegram_message()
 		else:
@@ -251,8 +253,8 @@ def function_to_run():
 			send_telegram_updates()
 
 			# Update previous lists
-			previous_sell_list = list(current_sell_list)
-			previous_buy_list = list(current_buy_list)
+			previous_sell_list = list(set(current_sell_list))
+			previous_buy_list = list(set(current_buy_list))
 			current_sell_list[:] = []
 			current_buy_list[:] = []
 
