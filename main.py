@@ -1,15 +1,15 @@
-from tradingview_ta import *
-from termcolor import colored
 import time
-import telegram_send
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import yfinance as yf
-from API import XTB
 import datetime
 import multiprocessing
 import functools
 import configparser
+from tradingview_ta import *
+from termcolor import colored
+import telegram_send
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import yfinance as yf
+from XTB_API.API import XTB
 
 # Getting credentials from config.ini file
 config = configparser.ConfigParser()
@@ -53,12 +53,19 @@ credentials = ServiceAccountCredentials.from_json_keyfile_name("pybotnasq_tok.js
 
 def get_tickers():
 	API = XTB(user, password)
-	ticker_list = API.get_AllSymbols()
-	ticker_list = [tickerdicts["symbol"].split(".")[0] for tickerdicts in ticker_list["returnData"] if "symbol" in tickerdicts and ".US" in tickerdicts["symbol"] and "CLOSE ONLY" not in tickerdicts["description"] and "(Cboe BZX Real-Time Quote)" in tickerdicts["description"]]
-	ticker_list = sorted(ticker_list)
+	ticker_list_local = API.get_AllSymbols()
+	ticker_list_local = [
+		tickerdicts["symbol"].split(".")[0]
+		for tickerdicts in ticker_list_local["returnData"]
+		if "symbol" in tickerdicts
+		and ".US" in tickerdicts["symbol"]
+		and "CLOSE ONLY" not in tickerdicts["description"]
+		and "(Cboe BZX Real-Time Quote)" in tickerdicts["description"]
+	]
+	ticker_list_local = sorted(ticker_list_local)
 	API.logout()
 	print("XTB login and logout")
-	return ticker_list
+	return ticker_list_local
 
 def trim_me(value_to_trim):
 	if not isinstance(value_to_trim, str):
@@ -78,7 +85,7 @@ def get_stock_data(ticker):
 		history_data = stock_data.history(period="1m")
 		if not history_data.empty and dividend_data is not None and not dividend_data.empty:
 			return trim_me(float(history_data.Close.iloc[0])), float(dividend_data.iloc[-1])
-		elif not history_data.empty and (dividend_data is None or dividend_data.empty):
+		if not history_data.empty and (dividend_data is None or dividend_data.empty):
 			return trim_me(float(history_data.Close.iloc[0])), None
 		else:
 			print(f"No data available for {ticker}")
@@ -135,7 +142,15 @@ def return_wishlist_tickers():
 	wishlist = wishlist.split(" ")
 	return wishlist
 
-def process_ticker(ticker, existing_tickers, portfolio, wishlist, sheet, current_sell_list, current_buy_list):
+def process_ticker(
+	ticker,
+	existing_tickers,
+	portfolio,
+	wishlist,
+	sheet,
+	current_sell_list,
+	current_buy_list
+):
 	current_price, dividend_price = get_stock_data(ticker)
 
 	if current_price is not None:
@@ -147,9 +162,9 @@ def process_ticker(ticker, existing_tickers, portfolio, wishlist, sheet, current
 					screener="america",
 					interval=Interval.INTERVAL_1_DAY
 				)
-				tickerRSI = trim_me(float(stock_data.get_analysis().indicators["RSI"]))
-				tickerBBU = trim_me(float(stock_data.get_analysis().indicators["BB.upper"]))
-				tickerBBL = trim_me(float(stock_data.get_analysis().indicators["BB.lower"]))
+				ticker_rsi = trim_me(float(stock_data.get_analysis().indicators["RSI"]))
+				ticker_bbu = trim_me(float(stock_data.get_analysis().indicators["BB.upper"]))
+				ticker_bbl = trim_me(float(stock_data.get_analysis().indicators["BB.lower"]))
 			except Exception:
 				try:
 					stock_data = TA_Handler(
@@ -158,17 +173,17 @@ def process_ticker(ticker, existing_tickers, portfolio, wishlist, sheet, current
 						screener="america",
 						interval=Interval.INTERVAL_1_DAY
 					)
-					tickerRSI = trim_me(float(stock_data.get_analysis().indicators["RSI"]))
-					tickerBBU = trim_me(float(stock_data.get_analysis().indicators["BB.upper"]))
-					tickerBBL = trim_me(float(stock_data.get_analysis().indicators["BB.lower"]))
+					ticker_rsi = trim_me(float(stock_data.get_analysis().indicators["RSI"]))
+					ticker_bbu = trim_me(float(stock_data.get_analysis().indicators["BB.upper"]))
+					ticker_bbl = trim_me(float(stock_data.get_analysis().indicators["BB.lower"]))
 				except Exception as e:
 					print(colored("Couldn't get stock data for {0}: {1}", "yellow").format(ticker, e))
-					tickerRSI = None
-					tickerBBL = None
-					tickerBBU = None
+					ticker_rsi = None
+					ticker_bbl = None
+					ticker_bbu = None
 
-			if tickerRSI is not None and tickerBBL is not None and tickerBBU is not None:
-				if tickerRSI >= 70 and current_price >= tickerBBU:
+			if ticker_rsi is not None and ticker_bbl is not None and ticker_bbu is not None:
+				if ticker_rsi >= 70 and current_price >= ticker_bbu:
 					if ticker in portfolio:
 						message = generate_telegram_message(ticker, "sell", "portfolio")
 						message = message[5:][:-4]
@@ -176,7 +191,7 @@ def process_ticker(ticker, existing_tickers, portfolio, wishlist, sheet, current
 						current_sell_list.append(ticker)
 					else:
 						current_sell_list.append(ticker)
-				if tickerRSI <= 30 and current_price <= tickerBBL:
+				if ticker_rsi <= 30 and current_price <= ticker_bbl:
 					if ticker in portfolio:
 						message = generate_telegram_message(ticker, "buy", "portfolio")
 						message = message[5:][:-4]
@@ -199,7 +214,6 @@ def process_ticker(ticker, existing_tickers, portfolio, wishlist, sheet, current
 def function_to_run():
 	global first_time_run, previous_sell_list, previous_buy_list, ticker_list
 
-	day_of_trade = time.strftime("%A")
 	time_of_trade = int(time.strftime("%H%M%S"))
 
 	start_time = time.time()
@@ -208,8 +222,6 @@ def function_to_run():
 		first_time_run = 1
 	else:
 		first_time_run = 0
-
-	current_date = datetime.datetime.now().date()
 
 	if time_of_trade < 163000:
 		print(f"Market is not open yet, sleep until 16:30")
@@ -262,7 +274,6 @@ def function_to_run():
 
 def sleep_until_target_time(target_time):
 	current_datetime = datetime.datetime.now()
-	current_time = current_datetime.time()
 	# Get today's date
 	today_date = current_datetime.date()
 	# Combine today's date with the target time
@@ -282,7 +293,7 @@ def sleep_until_target_time(target_time):
 
 def send_initial_telegram_message():
 	global current_sell_list, current_buy_list
-	
+
 	message_for_telegram = ""
 	if not current_sell_list:
 		message_for_telegram += "Nothing to sell now\n"
