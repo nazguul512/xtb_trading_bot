@@ -251,8 +251,8 @@ def function_to_run():
 			send_telegram_updates()
 
 			# Update previous lists
-			previous_sell_list = list(current_sell_list)
-			previous_buy_list = list(current_buy_list)
+			previous_sell_list = sorted(list(set(current_sell_list)))
+			previous_buy_list = sorted(list(set(current_buy_list)))
 			current_sell_list[:] = []
 			current_buy_list[:] = []
 
@@ -282,19 +282,20 @@ def sleep_until_target_time(target_time):
 
 def send_initial_telegram_message():
 	global current_sell_list, current_buy_list
+	
 	message_for_telegram = ""
 	if not current_sell_list:
 		message_for_telegram += "Nothing to sell now\n"
 	else:
 		message_for_telegram += "Sell signals:\n"
-		for ticker in current_sell_list:
+		for ticker in sorted(list(set(current_sell_list))):
 			message_for_telegram += f"Sell signal for {ticker}\n"
 
 	if not current_buy_list:
 		message_for_telegram += "Nothing to buy now\n"
 	else:
 		message_for_telegram += "Buy signals:\n"
-		for ticker in current_buy_list:
+		for ticker in sorted(list(set(current_buy_list))):
 			message_for_telegram += f"Buy signal for: {ticker}\n"
 	print(f"message for telegram to be sent: {message_for_telegram}")
 
