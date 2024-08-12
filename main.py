@@ -5,7 +5,7 @@ import telegram_send
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import yfinance as yf
-from API import XTB
+from XTB_API.API import XTB
 import datetime
 import multiprocessing
 import functools
