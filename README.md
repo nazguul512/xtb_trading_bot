@@ -5,7 +5,7 @@ XTB_trading_bot is exactly what its name implies. A bot written in Python, works
 ## Documentation
 
 At this moment, the bot doesn't trade by itself, it only takes the tickers available from the XTB broker, applies a RSI + BB strategy and sends all tickers for Buy and Sell through a channel in Telegram.
-The original link for the wrapper is here https://github.com/caiomborges/Python-XTB-API but I decided to included it in my files for a quicker setup.
+The original link for the wrapper is here https://github.com/caiomborges/Python-XTB-API but I decided to included a fork of it in my files as a submodule, for a quicker setup.
 I'm not gonna lie, my journey in Python is in its infancy steps, so at the moment ChatGPT is a great help to unblock me and improve my code where needed.
 
 ## Setup
