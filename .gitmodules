@@ -1,0 +1,3 @@
+[submodule "XTB_API"]
+	path = XTB_API
+	url = https://github.com/nazguul512/Python-XTB-API
