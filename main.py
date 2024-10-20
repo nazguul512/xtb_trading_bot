@@ -92,7 +92,7 @@ def get_stock_data(ticker):
 			return trim_me(float(history_data.Close.iloc[0])), None
 		print(f"No data available for {ticker}")
 		return None, None
-	except Exception as e:
+	except (Exception,) as e:
 		print(colored(f"Failed to get data for {ticker}: {e}", "red"))
 		return None, None
 
@@ -105,7 +105,7 @@ def authorize_spreadsheet():
 		# Get the list of tickers already present in the spreadsheet
 		existing_tickers = sheet.col_values(2)[2:]  # Skip header row
 		return sheet, existing_tickers
-	except Exception as e:
+	except (Exception,) as e:
 		print(colored(f"Failed to establish connection to Google Sheets: {e}", "red"))
 		return None, None
 
@@ -125,7 +125,7 @@ def update_spreadsheet(sheet, ticker, current_price, dividend_price):
 					div_cell = f"G{count}"
 					sheet.update_acell(div_cell, dividend_price)
 					print(f"Dividend {dividend_price} updated for {ticker} in spreadsheet")
-		except Exception as e:
+		except (Exception,) as e:
 			print(colored(f"Failed to update price in spreadsheet for {ticker}: {e}", "red"))
 
 def generate_telegram_message(ticker, signal_type, portfolio_type):
@@ -174,7 +174,7 @@ def process_ticker(
 				ticker_rsi = trim_me(float(stock_data.get_analysis().indicators["RSI"]))
 				ticker_bbu = trim_me(float(stock_data.get_analysis().indicators["BB.upper"]))
 				ticker_bbl = trim_me(float(stock_data.get_analysis().indicators["BB.lower"]))
-			except Exception:
+			except (Exception,):
 				try:
 					stock_data = TA_Handler(
 						symbol=ticker,
@@ -185,7 +185,7 @@ def process_ticker(
 					ticker_rsi = trim_me(float(stock_data.get_analysis().indicators["RSI"]))
 					ticker_bbu = trim_me(float(stock_data.get_analysis().indicators["BB.upper"]))
 					ticker_bbl = trim_me(float(stock_data.get_analysis().indicators["BB.lower"]))
-				except Exception as e:
+				except (Exception,) as e:
 					print(colored(f"Couldn't get stock data for {ticker}: {e}", "yellow"))
 					ticker_rsi = None
 					ticker_bbl = None
@@ -217,7 +217,7 @@ def process_ticker(
 				if ticker in existing_tickers:
 					update_spreadsheet(sheet, ticker, current_price, dividend_price)
 
-		except Exception as e:
+		except (Exception,) as e:
 			print(colored(f"Error processing ticker {ticker}: {e}", "yellow"))
 
 def function_to_run():
