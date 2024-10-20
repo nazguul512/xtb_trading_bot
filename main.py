@@ -1,3 +1,4 @@
+"""This module is a function based trading bot"""
 import time
 import datetime
 import multiprocessing
