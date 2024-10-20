@@ -51,6 +51,7 @@ scopes = [
 credentials = ServiceAccountCredentials.from_json_keyfile_name("pybotnasq_tok.json", scopes)
 
 def get_tickers():
+	"""Function that gathers all tickers available from XTB on us market"""
 	xtb_connect = XTB(user, password)
 	ticker_list_local = xtb_connect.get_AllSymbols()
 	ticker_list_local = [
@@ -67,6 +68,7 @@ def get_tickers():
 	return ticker_list_local
 
 def trim_me(value_to_trim):
+	"""Function to trim the value of argument received"""
 	if not isinstance(value_to_trim, str):
 		value_to_trim = str(value_to_trim)
 
@@ -75,6 +77,7 @@ def trim_me(value_to_trim):
 	return float(strip_value)
 
 def get_stock_data(ticker):
+	"""Function to get data for stocks"""
 	global first_time_run
 	dividend_data = None
 	try:
@@ -93,6 +96,7 @@ def get_stock_data(ticker):
 		return None, None
 
 def authorize_spreadsheet():
+	"""Function to authorize use of google spreadsheet"""
 	try:
 		sheet = None
 		portfoliosheet = gspread.auth.authorize(credentials)
@@ -105,6 +109,7 @@ def authorize_spreadsheet():
 		return None, None
 
 def update_spreadsheet(sheet, ticker, current_price, dividend_price):
+	"""Function to update the spreadsheet"""
 	global first_time_run
 	sheet, existing_tickers = authorize_spreadsheet()
 	if sheet is not None:
@@ -123,6 +128,7 @@ def update_spreadsheet(sheet, ticker, current_price, dividend_price):
 			print(colored(f"Failed to update price in spreadsheet for {ticker}: {e}", "red"))
 
 def generate_telegram_message(ticker, signal_type, portfolio_type):
+	"""Function to generate the telegram message"""
 	if portfolio_type == "portfolio":
 		signal_type_color = "green" if signal_type == "buy" else "yellow"
 	elif portfolio_type == "wishlist":
@@ -132,11 +138,13 @@ def generate_telegram_message(ticker, signal_type, portfolio_type):
 	return colored(f"{signal_type.upper()} signal for {ticker} ({portfolio_type})", signal_type_color)
 
 def return_portfolio_tickers():
+	"""Function to return portfolio tickers from config file"""
 	portfolio = config.get('finance', 'portfolio')
 	portfolio = portfolio.split(" ")
 	return portfolio
 
 def return_wishlist_tickers():
+	"""Function to return wishlist tickers from config file"""
 	wishlist = config.get('finance', 'wishlist')
 	wishlist = wishlist.split(" ")
 	return wishlist
@@ -150,6 +158,7 @@ def process_ticker(
 	current_sell_list,
 	current_buy_list
 ):
+	"""Function that does all the heavy lifting and calculations"""
 	current_price, dividend_price = get_stock_data(ticker)
 
 	if current_price is not None:
@@ -176,7 +185,7 @@ def process_ticker(
 					ticker_bbu = trim_me(float(stock_data.get_analysis().indicators["BB.upper"]))
 					ticker_bbl = trim_me(float(stock_data.get_analysis().indicators["BB.lower"]))
 				except Exception as e:
-					print(colored("Couldn't get stock data for {0}: {1}", "yellow").format(ticker, e))
+					print(colored(f"Couldn't get stock data for {ticker}: {e}", "yellow"))
 					ticker_rsi = None
 					ticker_bbl = None
 					ticker_bbu = None
@@ -208,9 +217,10 @@ def process_ticker(
 					update_spreadsheet(sheet, ticker, current_price, dividend_price)
 
 		except Exception as e:
-			print(colored("Error processing ticker {0}: {1}".format(ticker, e), "yellow"))
+			print(colored(f"Error processing ticker {ticker}: {e}", "yellow"))
 
 def function_to_run():
+	"""Main function that executes the code or keeps it idle"""
 	global first_time_run, previous_sell_list, previous_buy_list, ticker_list
 
 	time_of_trade = int(time.strftime("%H%M%S"))
@@ -223,12 +233,12 @@ def function_to_run():
 		first_time_run = 0
 
 	if time_of_trade < 163000:
-		print(f"Market is not open yet, sleep until 16:30")
+		print("Market is not open yet, sleep until 16:30")
 		target_time = datetime.time(16, 30, 1)
 		time_slept = sleep_until_target_time(target_time)
 		print(f"Slept for {time_slept} seconds until {target_time}")
 	elif time_of_trade > 230000:
-		print(f"Market just closed, sleep until midnight")
+		print("Market just closed, sleep until midnight")
 		target_time = datetime.time(0, 0, 1)
 		time_slept = sleep_until_target_time(target_time)
 		print(f"Slept for {time_slept} seconds until {target_time}")
@@ -272,6 +282,8 @@ def function_to_run():
 	print(elapsed_time)
 
 def sleep_until_target_time(target_time):
+	"""Function that forces code to 'sleep' so that CPU will get idle 
+	when market is not open"""
 	current_datetime = datetime.datetime.now()
 	# Get today's date
 	today_date = current_datetime.date()
@@ -291,6 +303,7 @@ def sleep_until_target_time(target_time):
 	return time_until_target_seconds
 
 def send_initial_telegram_message():
+	"""Function that sends the initial message on the telegram channel"""
 	global current_sell_list, current_buy_list
 
 	message_for_telegram = ""
@@ -312,6 +325,7 @@ def send_initial_telegram_message():
 	telegram_send.send(messages=[message_for_telegram], parse_mode="html")
 
 def send_telegram_updates():
+	"""Function to send additional updates on telegram channel"""
 	portfolio = return_portfolio_tickers()
 	wishlist = return_wishlist_tickers()
 	global current_sell_list, current_buy_list, previous_sell_list, previous_buy_list
@@ -346,6 +360,7 @@ def send_telegram_updates():
 		telegram_send.send(messages=[message_for_telegram], parse_mode="html")
 
 def run_function_except_on_dates(excluded_dates):
+	"""Function to make code not run on various dates when market is closed"""
 	while True:
 		current_date = datetime.datetime.now().date()
 		# Check if the current date is in the excluded_dates list
