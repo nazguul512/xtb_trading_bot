@@ -206,7 +206,7 @@ def generate_telegram_message(ticker, signal_type, portfolio_type):
 
 def reload_config_if_changed(state):
 	"""Reloads the config file only if it has been modified."""
-	
+
 	# Get the last modified time of config.ini
 	current_mtime = os.path.getmtime(CONFIG_PATH)
 	if state["last_config_mtime"] is None or current_mtime > state["last_config_mtime"]:
