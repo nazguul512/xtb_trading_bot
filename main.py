@@ -4,6 +4,7 @@ import datetime
 import multiprocessing
 import functools
 import configparser
+import os
 from tradingview_ta import TA_Handler, Interval
 from termcolor import colored
 import telegram_send
@@ -13,16 +14,9 @@ import yfinance as yf
 from XTB_API.API import XTB # pylint: disable=import-error, no-name-in-module
 #The line above will be changed once the lib will be pushed to pip
 
-#first_time_run = 0
-#previous_sell_list = []
-#previous_buy_list = []
-#ticker_list = None
-
 # Getting credentials from config.ini file
 config = configparser.ConfigParser()
-config.read('config.ini')
-user = config.get('XTB', 'XTB_user')
-password = config.get('XTB', 'XTB_pass')
+CONFIG_PATH = "config.ini"
 
 excluded_dates_list = [
 	datetime.date(2025, 1, 1),
@@ -49,6 +43,9 @@ def get_tickers():
 	Returns:
 		list: A list of tickers provided by XTB broker.
 	"""
+	config.read('config.ini')
+	user = config.get('XTB', 'XTB_user')
+	password = config.get('XTB', 'XTB_pass')
 	xtb_connect = XTB(user, password)
 	ticker_list_local = xtb_connect.get_AllSymbols()
 	ticker_list_local = [
@@ -207,25 +204,33 @@ def generate_telegram_message(ticker, signal_type, portfolio_type):
 		signal_type_color = "white"
 	return colored(f"{signal_type.upper()} signal for {ticker} ({portfolio_type})", signal_type_color)
 
-def return_portfolio_tickers():
+def reload_config_if_changed(state):
+	"""Reloads the config file only if it has been modified."""
+
+	# Get the last modified time of config.ini
+	current_mtime = os.path.getmtime(CONFIG_PATH)
+	if state["last_config_mtime"] is None or current_mtime > state["last_config_mtime"]:
+		print("Config file changed. Reloading config file ...")
+		config.read(CONFIG_PATH)
+		state["last_config_mtime"] = current_mtime
+
+def return_portfolio_tickers(state):
 	"""Function to return portfolio tickers from config file
 
 	Return:
 		string: string containing all the tickers in the portfolio section
 	"""
-	portfolio = config.get('finance', 'portfolio')
-	portfolio = portfolio.split(" ")
-	return portfolio
+	reload_config_if_changed(state)
+	return config.get('finance', 'portfolio').split(" ")
 
-def return_wishlist_tickers():
+def return_wishlist_tickers(state):
 	"""Function to return wishlist tickers from config file
 
 	Return:
 		string: string containing all the tickers in the wishlist section
 	"""
-	wishlist = config.get('finance', 'wishlist')
-	wishlist = wishlist.split(" ")
-	return wishlist
+	reload_config_if_changed(state)
+	return config.get('finance', 'wishlist').split(" ")
 
 def get_technical_indicators(ticker):
 	"""Fetch technical indicators (RSI, BB.upper, BB.lower) for the ticker"""
@@ -394,8 +399,8 @@ def function_to_run(state):
 	#Market is open - proceed with processing
 	sheet = authorize_spreadsheet()
 	existing_tickers = get_tickers_from_sheet(sheet)
-	portfolio = return_portfolio_tickers()
-	wishlist = return_wishlist_tickers()
+	portfolio = return_portfolio_tickers(state)
+	wishlist = return_wishlist_tickers(state)
 
 	if state["first_time_run"] == 1 or state["ticker_list"] is None:
 		state["ticker_list"] = get_tickers()
@@ -493,8 +498,8 @@ def send_telegram_updates(state):
 		diff_sell_list: list of tickers marked SELL between latest two iterations
 		diff_buy_list: list of tickers marked BUY between latest two iteration
 	"""
-	portfolio = return_portfolio_tickers()
-	wishlist = return_wishlist_tickers()
+	portfolio = return_portfolio_tickers(state)
+	wishlist = return_wishlist_tickers(state)
 	message_for_telegram = ""
 
 	# Calculate the differences between the processed tickers
@@ -550,7 +555,8 @@ def main():
 		"first_time_run": 0,
 		"previous_sell_list": [],
 		"previous_buy_list": [],
-		"ticker_list": None
+		"ticker_list": None,
+		"last_config_mtime": None
 	}
 
 	run_function_except_on_dates(excluded_dates_list, state)
